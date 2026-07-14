@@ -1,0 +1,13 @@
+# user's own config + runtime state (never commit personal setup)
+config.toml
+*.local.toml
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# os / editor
+.DS_Store
+*.swp

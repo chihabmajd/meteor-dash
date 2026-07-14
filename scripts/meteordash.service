@@ -1,0 +1,19 @@
+# meteor-dash as a per-user systemd service (optional).
+# Install:
+#   cp scripts/meteordash.service ~/.config/systemd/user/
+#   (edit ExecStart path if the repo isn't at ~/Projects/meteor-dash)
+#   systemctl --user daemon-reload && systemctl --user enable --now meteordash
+# Then browse to http://localhost:8777
+[Unit]
+Description=meteor-dash telemetry + health HUD
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m meteordash
+WorkingDirectory=%h/Projects/meteor-dash
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

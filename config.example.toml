@@ -1,0 +1,88 @@
+# ============================================================================
+#  meteor-dash configuration
+# ----------------------------------------------------------------------------
+#  Copy this file to  config.toml  and edit. Almost everything is optional —
+#  meteor-dash auto-detects your CPU, GPUs, fans, battery and disks. You only
+#  need this file to (a) turn panels on/off, (b) tune thresholds, or (c) point
+#  the optional "vault" / "movies" modules at your folders.
+# ============================================================================
+
+[server]
+host = "127.0.0.1"     # keep on localhost unless you know what you're doing
+port = 8777
+title = "meteor · command deck"
+
+# ---------------------------------------------------------------- panels
+# Turn whole sections on or off. Anything the hardware can't provide is
+# hidden automatically even if enabled here.
+[panels]
+cpu       = true
+gpu       = true       # every detected GPU gets its own card (nvidia/amd/intel)
+fans      = true
+memory    = true
+battery   = true       # auto-hidden on desktops with no battery
+integrity = true       # the persistence / health self-check
+health    = true       # the advisory engine (disk SMART, updates, thermals…)
+vault     = false      # optional personal storage-intelligence module (below)
+movies    = false      # optional movie backlog + watched tracking (below)
+
+# ---------------------------------------------------------------- thresholds
+# Gauges/advisories go amber at `warn`, red at `crit`.
+[thresholds]
+cpu_temp   = { warn = 75, crit = 88 }   # °C
+gpu_temp   = { warn = 75, crit = 85 }
+cpu_load   = { warn = 80, crit = 95 }   # %
+gpu_load   = { warn = 85, crit = 97 }
+mem_pct    = { warn = 85, crit = 95 }
+disk_pct   = { warn = 80, crit = 92 }
+battery_health = { warn = 80, crit = 60 }   # % of design capacity
+nvme_wear  = { warn = 80, crit = 95 }       # SMART percentage_used
+
+# ---------------------------------------------------------------- hardware
+# All optional — leave blank to auto-detect. Set only to override.
+[hardware]
+# battery = "BAT0"          # force a specific /sys/class/power_supply device
+# cpu_hwmon = "k10temp"     # k10temp (AMD), coretemp (Intel), zenpower…
+# extra_fans = ["nct6775"]     # extra hwmon names to read fan*_input from
+
+# Disks to show usage/SMART for. Auto-detects "/" if omitted.
+[[disks]]
+mount = "/"
+label = "root"
+# device = "/dev/nvme0n1"   # optional; for SMART. Auto-derived from mount if omitted.
+
+# ---------------------------------------------------------------- health engine
+# Universal health signals. Each can be toggled; needs the listed tool.
+[health]
+smart          = true    # NVMe/SATA SMART via smartctl (pkg: smartmontools)
+thermal        = true    # thermal-throttle / hot-fan-stall detection
+battery_wear   = true
+failed_units   = true    # systemctl --failed
+pending_updates = true   # Arch: checkupdates (pacman-contrib). Others: see docs.
+memory_pressure = true   # swap thrash / OOM in dmesg
+load           = true    # loadavg vs core count
+# service checks: named systemd --user units that must stay active
+watch_user_units = []    # e.g. ["syncthing.service"]
+# arbitrary files that must exist (guards like an xorg fix). name = path
+[health.watch_files]
+# "X11 iGPU pin" = "/etc/X11/xorg.conf.d/20-amdgpu.conf"
+
+# ---------------------------------------------------------------- vault module
+# Personal storage-intelligence: tracked folders, sizes, growth, advisories.
+# Point it either at a pre-generated markdown report, or at raw folders.
+[vault]
+# source = "markdown"                       # "markdown" or "folders"
+# markdown_path = "~/notes/storage.md"        # if source = "markdown"
+# folders = [                               # if source = "folders"
+#   { path = "~/Projects",  label = "Projects", kind = "projects" },
+#   { path = "~/Documents", label = "Documents" },
+#   { path = "~/Downloads", label = "Downloads", stale_days = 90 },
+# ]
+
+# ---------------------------------------------------------------- movies module
+# Precise "watched" tracking (replaces the unreliable atime guess).
+[movies]
+# folder = "~/Movies"
+# watched_file = "~/.config/meteor-dash/watched.txt"   # one title per line
+# mpv_log = "~/.config/meteor-dash/mpv-history.jsonl"  # written by scripts/mpv-history.lua
+# finished_fraction = 0.85   # a play past this fraction counts as "watched"
