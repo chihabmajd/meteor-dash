@@ -91,6 +91,13 @@ tr:hover td{background:rgba(255,155,33,.04)}
 .amber{color:var(--amber)} .cy{color:var(--cyan)}
 .foot{margin-top:34px;padding-top:14px;border-top:1px solid var(--edge);font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:1px;display:flex;gap:16px;flex-wrap:wrap}
 .miss{color:var(--faint);font-size:12px;padding:10px 0}
+.alert{display:flex;gap:12px;padding:11px 13px;background:#0f0c08;border-left:3px solid var(--warn);margin-bottom:9px}
+.alert.crit{border-color:var(--crit)} .alert.info{border-color:var(--cyan)}
+.alert .big{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--warn);line-height:1;white-space:nowrap}
+.alert.crit .big{color:var(--crit)} .alert.info .big{color:var(--cyan)}
+.alert .tx{font-size:12.5px;color:var(--dim);line-height:1.4}
+.alert .tx b{color:var(--txt)}
+.up{color:var(--ok)} .down{color:var(--crit)} .flat{color:var(--faint)}
 .hgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:1px;background:var(--edge);border:1px solid var(--edge)}
 .hrow{background:var(--panel);display:flex;align-items:center;gap:11px;padding:11px 14px}
 .hrow .sig{width:10px;height:10px;flex:none;transform:rotate(45deg);box-shadow:0 0 7px currentColor}
@@ -133,6 +140,13 @@ tr:hover td{background:rgba(255,155,33,.04)}
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>(s||"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function md(s){s=esc(s);
+ s=s.replace(/\[\[([^\]]+)\]\]/g,(m,x)=>x.split('/').pop());
+ s=s.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+ s=s.replace(/`([^`]+)`/g,'<span class=mono>$1</span>');
+ return s;}
+function toB(s){if(!s)return 0;const m=(''+s).match(/([\d.]+)\s*([KMGT])?/i);if(!m)return 0;
+ const u={K:1e3,M:1e6,G:1e9,T:1e12}[(m[2]||'').toUpperCase()]||1;return parseFloat(m[1])*u;}
 let CFG={panels:{},thresholds:{}};
 const th=n=>{const t=CFG.thresholds[n]||{};return [t.warn,t.crit];};
 function human(n){if(n==null)return'—';for(const u of['B','K','M','G','T']){if(n<1024)return (u=='B'?n.toFixed(0):n.toFixed(1))+u;n/=1024;}return n.toFixed(1)+'P';}
@@ -209,13 +223,107 @@ function vaultZone(v){
    proj.children.map(c=>`<div class=slot><span class=led style="background:${c.fresh?'var(--ok)':'var(--warn)'};color:${c.fresh?'var(--ok)':'var(--warn)'}"></span><span class=nm>${esc(c.name)}${c.stack?'<em>'+esc(c.stack)+'</em>':''}</span><span class=sz>${c.size}</span></div>`).join(''));
  return zone('Storage Ops','live')+`<div class="grid g2">${disk}${panel('Storage Volumes','by size','off',tanks)}</div>`+(pslots?`<div style=margin-top:14px>${pslots}</div>`:'');
 }
-function markdownVault(v){ // generic table render of a markdown report
- return '<div class="grid g2">'+(v.sections||[]).map(s=>{
-  const t=(s.blocks||[]).find(b=>b.t==='table');
-  const body=t?`<div class=tw><table><thead><tr>${t.head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
-   :(s.blocks||[]).map(b=>`<p style="color:var(--dim);font-size:12.5px">${esc(b.text)}</p>`).join('');
+function markdownVault(v){ // bespoke render of known section types (falls back to tables)
+ const S=v.sections||[];
+ const sec=t=>S.find(s=>s.title.toLowerCase().startsWith(t.toLowerCase()));
+ const table=t=>(t&&t.blocks||[]).find(b=>b.t==='table');
+ const texts=t=>(t&&t.blocks||[]).filter(b=>b.t==='p').map(b=>b.text);
+ const rendered=new Set();
+ const H=[];
+
+ // DISK reservoir hero + storage tanks
+ const disk=sec('Disk'); const dtext=texts(disk)[0]||'';
+ const dm=dtext.match(/\*\*(\d+)%\*\*[^\d]*([\d.]+\w)\s*of\s*([\d.]+\w)[^\d]*\*\*([\d.]+\w)\s*free/i);
+ const fsz=table(sec('Folder Sizes'));
+ let tanks='',biggest=null;
+ if(fsz){const max=Math.max(...fsz.rows.map(r=>toB(r[1])));
+  fsz.rows.sort((a,b)=>toB(b[1])-toB(a[1]));biggest=fsz.rows[0];
+  fsz.rows.forEach(r=>{const w=Math.max(toB(r[1])/max*100,1.5);
+   tanks+=`<div class=tank><div class=top><span class=nm>${md(r[0])}<em>${r[2]||''} files</em></span><span class=sz>${r[1]}</span></div><div class=bar><i style="width:${w}%"></i></div></div>`;});}
+ if(disk||fsz){rendered.add(disk).add(sec('Folder Sizes'));
+  const dgau=dm?gauge(parseInt(dm[1]),100,'%','CAPACITY',80,92,168):'';
+  H.push(`<div class="grid g2">
+   <div class=panel><div class=in>
+    <div class=phd><div class=tk></div><h3>Disk Reservoir</h3>${dm?`<div class="tag cy">${dm[1]}% used</div>`:''}</div>
+    ${dm?`<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin:4px 0 6px">
+     <div>${dgau}</div>
+     <div style="flex:1;min-width:150px">
+      <div style="font-family:var(--mono);font-size:32px;font-weight:700;color:var(--cyan);line-height:1;margin-bottom:8px">${dm[4]}<small style="font-size:13px;color:var(--dim)"> free</small></div>
+      <div class=ro><span class=k>Used</span><span class=v>${dm[2]}</span></div>
+      <div class=ro><span class=k>Total</span><span class=v>${dm[3]}</span></div>
+      ${biggest?`<div class=ro><span class=k>Largest</span><span class=v>${md(biggest[0])} · ${biggest[1]}</span></div>`:''}
+     </div></div>
+    <div class=bar style="height:16px"><i style="width:${dm[1]}%;background:var(--cyan)"></i></div>`:md(dtext)}
+   </div></div>
+   <div class=panel><div class=in>
+    <div class=phd><div class=tk></div><h3>Storage Volumes</h3><div class="tag off">by size</div></div>
+    ${tanks||'<div class=miss>—</div>'}
+   </div></div></div>`);}
+
+ // ADVICE alerts
+ const advS=sec('Advice')||sec('Advisories'); const adv=texts(advS);
+ if(adv.length){rendered.add(advS);let a='';adv.forEach(t=>{
+   const big=(t.match(/\*\*([\d.]+[KMGT]|\d+)\*\*/)||[])[1]||(t.match(/^\d+\./)?'!':'·');
+   const crit=/duplicate|waste|\bdrop\b/i.test(t);
+   a+=`<div class="alert ${crit?'crit':''}"><div class=big>${big}</div><div class=tx>${md(t.replace(/^\d+\.\s*/,''))}</div></div>`;});
+  H.push(`<div class=panel style="margin-top:14px"><div class=in>
+   <div class=phd><div class=tk></div><h3>Advisories</h3><div class=tag>${adv.length}</div></div>${a}</div></div>`);}
+
+ // PROJECTS slots + STUDIES
+ const pjS=sec('Projects'),stuS=sec('Studies');const pj=table(pjS),stu=table(stuS);
+ if(pj||stu){rendered.add(pjS).add(stuS);let pslots='';
+  if(pj)pj.rows.forEach(r=>{const st=r[1]||'';const col=st.includes('🟢')?'var(--ok)':st.includes('🟡')?'var(--warn)':'var(--faint)';
+   pslots+=`<div class=slot><span class=led style="background:${col};color:${col}"></span><span class=nm>${md(r[0])}${r[2]&&r[2]!=='—'?'<em>'+esc(r[2])+'</em>':''}</span><span class=sz>${r[3]||''}</span></div>`;});
+  let strows='';if(stu)stu.rows.forEach(r=>{strows+=`<tr><td>${md(r[0])}</td><td class=amber>${r[1]||''}</td><td>${r[2]||''}</td></tr>`;});
+  H.push(`<div class="grid g2" style="margin-top:14px">
+   <div class=panel><div class=in><div class=phd><div class=tk></div><h3>Projects</h3><div class=tag>${pj?pj.rows.length:0} live</div></div>${pslots||'<div class=miss>—</div>'}</div></div>
+   <div class=panel><div class=in><div class=phd><div class=tk></div><h3>Studies</h3></div><div class=tw><table><thead><tr><th>Area</th><th>Size</th><th>Modified</th></tr></thead><tbody>${strows}</tbody></table></div></div></div></div>`);}
+
+ // MOVIE backlog + RECLAIMABLE
+ const mvS=sec('Movies'),dupS=sec('Duplicates'),dlS=sec('Downloads'),stgS=sec('Staging');
+ const mt=table(mvS),mtxt=texts(mvS)[0]||'';
+ const wm=mtxt.match(/\*\*(\d+)\/(\d+)\*\*.*?\*\*([\d.]+\w)\*\*/);
+ let mrows='';if(mt)mt.rows.slice(0,7).forEach(r=>{mrows+=`<tr><td>${esc(r[0]).slice(0,42)}</td><td class=amber>${r[1]||''}</td><td>${r[2]||''}</td></tr>`;});
+ const dup=texts(dupS)[0]||'';const dupm=dup.match(/\*\*(\d+)\s*groups\*\*,\s*([\d.]+\w)/i);const duptbl=table(dupS);
+ const dl=table(dlS);let stale='';if(dl){const sr=dl.rows.find(r=>/stale/i.test(r[0]));stale=sr?sr[1]:'';}
+ const stg=texts(stgS)[0]||'';const stgm=stg.match(/\*\*([\d.]+\w)\*\*,\s*(\d+)/);
+ if(mt||dupm||stale||stgm){rendered.add(mvS).add(dupS).add(dlS).add(stgS);
+  H.push(`<div class="grid g2" style="margin-top:14px">
+   <div class=panel><div class=in>
+    <div class=phd><div class=tk></div><h3>Movie Backlog</h3>${wm?`<div class=tag>${wm[1]}/${wm[2]} seen</div>`:''}</div>
+    ${wm?`<div class=alert info><div class=big>${wm[3]}</div><div class=tx><b>Unwatched backlog.</b> ${wm[1]} of ${wm[2]} titles watched.</div></div>`:''}
+    <div class=tw><table><thead><tr><th>Unwatched</th><th>Size</th><th>Age</th></tr></thead><tbody>${mrows}</tbody></table></div></div></div>
+   <div class=panel><div class=in>
+    <div class=phd><div class=tk></div><h3>Reclaimable</h3><div class="tag off">cleanup</div></div>
+    ${dupm?`<div class="alert crit"><div class=big>${dupm[2]}</div><div class=tx><b>${dupm[1]} duplicate groups.</b> Reclaimable space.</div></div>`:''}
+    ${stale?`<div class=alert><div class=big>${stale.split(',')[0]}</div><div class=tx><b>Stale downloads</b> (90+ days). Triage.</div></div>`:''}
+    ${stgm?`<div class="alert info"><div class=big>${stgm[1]}</div><div class=tx><b>${stgm[2]} items staged</b>. Empty when ready.</div></div>`:''}
+    ${duptbl?`<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin:12px 0 4px">Top duplicate files</div><div class=tw><table><tbody>${duptbl.rows.slice(0,3).map(r=>`<tr><td>${esc(r[0])}</td><td class=amber style="text-align:right">${r[1]||''}</td><td style="text-align:right">×${r[2]||''}</td></tr>`).join('')}</tbody></table></div>`:''}
+   </div></div></div>`);}
+
+ // TRENDS + collection by decade
+ const trS=sec('Trends'),funS=sec('Fun');const tr=table(trS),dec=table(funS);
+ if(tr||dec){rendered.add(trS).add(funS);let trows='';
+  if(tr)tr.rows.forEach(r=>{const dd=r[1]||'';const cl=dd.includes('↑')?'up':dd.includes('↓')?'down':'flat';
+   trows+=`<tr><td>${md(r[0])}</td><td class=${cl}>${esc(dd)}</td><td class=mono>${esc(r[2]||'')}</td></tr>`;});
+  let decbars='';if(dec){const mx=Math.max(...dec.rows.map(r=>parseInt(r[1])||0));
+   dec.rows.forEach(r=>{const n=parseInt(r[1])||0;decbars+=`<div class=tank><div class=top><span class=nm>${esc(r[0])}</span><span class=sz>${n}</span></div><div class=bar><i style="width:${mx?n/mx*100:0}%"></i></div></div>`;});}
+  const pick=(texts(funS).find(t=>/tonight/i.test(t))||'');
+  const notes=(texts(funS).find(t=>/vault:/i.test(t))||'').match(/\*\*(\d+)\s*notes\*\*/);
+  H.push(`<div class="grid g2" style="margin-top:14px">
+   <div class=panel><div class=in><div class=phd><div class=tk></div><h3>Growth Trends</h3></div><div class=tw><table><thead><tr><th>Folder</th><th>Dir</th><th>Change</th></tr></thead><tbody>${trows}</tbody></table></div></div></div>
+   <div class=panel><div class=in><div class=phd><div class=tk></div><h3>Collection · by decade</h3>${notes?`<div class="tag cy">${notes[1]} notes</div>`:''}</div>${decbars}
+    ${pick?`<div class=alert info style="margin-top:10px"><div class=big>▶</div><div class=tx>${md(pick.replace(/^🎬\s*/,''))}</div></div>`:''}</div></div></div>`);}
+
+ // any unrecognised sections -> generic tables so nothing is lost
+ const leftover=S.filter(s=>!rendered.has(s)).map(s=>{
+  const t=table(s);
+  const body=t?`<div class=tw><table><thead><tr>${t.head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${t.rows.map(r=>`<tr>${r.map(c=>`<td>${md(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+   :texts(s).map(x=>`<p style="color:var(--dim);font-size:12.5px;margin:4px 0">${md(x)}</p>`).join('');
   return panel(s.title,'','',body);
- }).join('')+'</div>';
+ }).join('');
+ if(leftover)H.push(`<div class="grid g2" style="margin-top:14px">${leftover}</div>`);
+ return H.join('');
 }
 
 // ---------------- movies ----------------
