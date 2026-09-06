@@ -1,8 +1,4 @@
-"""Load and normalise meteor-dash configuration.
-
-Config is optional: every value has a default and hardware is auto-detected.
-A user config.toml only overrides. Uses stdlib tomllib (Python 3.11+).
-"""
+"""Config loading. Every value has a default; config.toml only overrides."""
 from __future__ import annotations
 import os
 import tomllib

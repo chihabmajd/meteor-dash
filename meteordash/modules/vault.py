@@ -1,12 +1,7 @@
-"""Optional storage-intelligence module.
+"""Optional storage module, off by default.
 
-Two sources, chosen in config:
-  source = "folders"   -> scan configured folders live (size, count, age,
-                          project status). Works for anyone, zero prep.
-  source = "markdown"  -> parse a pre-generated markdown report (e.g. a
-                          personal Pilot.md pipeline). Power-user path.
-
-Off by default; enabled via [vault] in config.toml.
+source="folders" scans configured folders live; source="markdown" parses a
+pre-generated report.
 """
 from __future__ import annotations
 import os

@@ -1,14 +1,8 @@
-"""Universal health signals + persistence self-check.
+"""Health signals.
 
-Two products:
-  integrity(cfg, data)  -> config-driven "these must stay true" checks
-                           (systemd --user units active, guard files present)
-  advisories(cfg, data) -> disk SMART, thermal, battery wear, failed units,
-                           pending updates, memory pressure, load average.
-
-Every probe is best-effort and degrades gracefully when a tool is missing or
-needs root — it reports an "info" note rather than crashing or lying.
-Sources for the signal thresholds are cited in docs/HEALTH_SIGNALS.md.
+integrity() checks user-defined invariants, advisories() checks hardware and
+system health. A failed probe reports an info note rather than crashing.
+Thresholds are sourced in docs/HEALTH_SIGNALS.md.
 """
 from __future__ import annotations
 import glob
@@ -33,7 +27,6 @@ def _summary(items):
             for s in ("ok", "warn", "crit", "info")}
 
 
-# ============================================================ integrity
 def _uunit_active(unit):
     return sh("systemctl --user is-active " + unit) == "active"
 
@@ -55,7 +48,6 @@ def integrity(cfg, data=None):
     return {"checks": checks, "summary": _summary(checks)}
 
 
-# ============================================================ advisories
 def _derive_disk_device(mount):
     src = sh(f"findmnt -no SOURCE -T {mount}")
     if not src.startswith("/dev/"):

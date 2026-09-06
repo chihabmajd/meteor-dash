@@ -1,12 +1,7 @@
-"""Movie backlog with *precise* watched tracking.
+"""Movie backlog with watched-tracking.
 
-Replaces the old atime heuristic (unreliable under relatime; false-positives
-from thumbnailers/copies) with real signals, in priority order:
-  1. an explicit watched list  (watched_file, one title/filename per line)
-  2. mpv play history          (mpv_log, written by scripts/mpv-history.lua)
-  3. atime heuristic           (last resort, flagged as low-confidence)
-
-`mark_watched()` powers the dashboard's click-to-mark button.
+Watched status is decided in priority order: explicit watched_file, then mpv
+play history, then an atime heuristic flagged as low confidence.
 """
 from __future__ import annotations
 import json

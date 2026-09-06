@@ -1,10 +1,10 @@
 # ============================================================================
 #  meteor-dash configuration
 # ----------------------------------------------------------------------------
-#  Copy this file to  config.toml  and edit. Almost everything is optional —
-#  meteor-dash auto-detects your CPU, GPUs, fans, battery and disks. You only
-#  need this file to (a) turn panels on/off, (b) tune thresholds, or (c) point
-#  the optional "vault" / "movies" modules at your folders.
+#  Copy this file to config.toml and edit. Almost everything is optional:
+#  CPU, GPUs, fans, battery and disks are auto-detected. Use this file to
+#  toggle panels, tune thresholds, or point the optional storage and movie
+#  modules at your folders. See docs/CONFIGURE.md for a setup checklist.
 # ============================================================================
 
 [server]

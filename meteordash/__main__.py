@@ -34,5 +34,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-# modules/__init__ marker is created alongside; see modules/__init__.py

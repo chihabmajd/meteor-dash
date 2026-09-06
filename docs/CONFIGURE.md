@@ -1,62 +1,31 @@
 # Configuring meteor-dash
 
-This checklist covers the optional modules and the integrity checks, which
-are the only parts that cannot be auto-detected.
+meteor-dash runs with no config. This checklist covers the optional modules and the
+integrity checks, which are the only parts that cannot be auto-detected.
 
-**Goal:** generate `./config.toml` tailored to this machine. Detect what you can;
-only ask the user about *preferences* you cannot infer.
-
----
-
-## Step 1 — Probe the hardware (don't ask, detect)
-
-Run these and use the results to fill `[hardware]`, `[[disks]]`, and thresholds.
-Everything auto-detects, so you usually leave `[hardware]` empty — only override
-when detection is wrong.
+## 1. See what is detected
 
 ```bash
-python3 -m meteordash --check | head -c 4000   # one-shot JSON of what it sees
+python3 -m meteordash --check | python3 -m json.tool | head -40
 ```
 
-Sanity-check that CPU temp, each GPU, fans, and battery appear. If a GPU or
-battery is missing, note it (you may disable that panel). Identify the root disk
-and its device for SMART:
+Check that CPU temperature, each GPU, fans and battery appear. If a GPU or battery is
+missing, disable that panel in `[panels]`. `[hardware]` is normally left empty and only
+overridden when detection is wrong.
+
+Identify the root disk for SMART, and see which optional tools are present:
 
 ```bash
 findmnt -no SOURCE,FSTYPE -T /
 lsblk -dno NAME,MODEL,SIZE
+for t in nvidia-smi smartctl checkupdates mpv; do
+  command -v $t >/dev/null && echo "$t: yes" || echo "$t: no"
+done
 ```
 
-Check which optional tools exist (drives which health signals work):
+## 2. Write config.toml
 
-```bash
-for t in nvidia-smi smartctl checkupdates mpv; do command -v $t >/dev/null && echo "$t: yes" || echo "$t: no"; done
-```
-
-## Step 2 — Ask the user (preferences only)
-
-Ask a *short* set of questions — ideally as multiple-choice. Suggested:
-
-1. **Which optional zones do you want?**
-   - Storage tracking (folder sizes, projects, growth)?
-   - Movie backlog with watched-tracking?
-2. **If storage tracking:** which folders should it watch? Offer sensible
-   defaults from what exists: `~/Projects`, `~/Downloads`, `~/Documents`,
-   `~/Documents`, `~/Movies`, `~/Music`. For a code folder, mark `kind = "projects"`
-   so it gets per-project status LEDs. For `~/Downloads`, set `stale_days = 90`.
-3. **If movies:** confirm the movies folder (default `~/Movies`) and offer to
-   install the mpv watch-history hook (`scripts/install.sh`, or copy
-   `scripts/mpv-history.lua` to `~/.config/mpv/scripts/`).
-4. **Any "must stay true" integrity checks?** e.g. a systemd --user service that
-   should stay active, or a config file whose absence would break something.
-   These become `[health] watch_user_units` and `[health.watch_files]`.
-
-Don't ask about thresholds unless the user brings it up — the defaults are good.
-
-## Step 3 — Write config.toml
-
-Start from `config.example.toml`, keep only what differs from defaults, and fill
-the modules the user opted into. Minimal example:
+Start from `config.example.toml` and keep only what differs from the defaults.
 
 ```toml
 [panels]
@@ -79,22 +48,30 @@ folders = [
 folder = "~/Movies"
 
 [health]
-watch_user_units = ["my-daemon.service"]     # only if the user named one
+watch_user_units = ["my-daemon.service"]
 [health.watch_files]
-# "Some guard" = "/etc/somewhere/important.conf"
+"Firewall rules" = "/etc/nftables.conf"
 ```
 
-**Power-user note:** if the user already has a pipeline that generates a markdown
-storage report (tables of folder sizes, projects, etc.), set
-`[vault] source = "markdown"` and `markdown_path = "..."` instead of `folders`.
-meteor-dash will render its tables generically.
+`kind = "projects"` gives per-project status indicators. `watch_user_units` and
+`watch_files` are the integrity checks: a systemd user unit that should stay active, or
+a config file whose absence would break something.
 
-## Step 4 — Verify
+If you already generate a markdown storage report, set `[vault] source = "markdown"` and
+`markdown_path` instead of `folders`; its tables are rendered generically.
+
+Thresholds rarely need touching.
+
+## 3. Install the mpv hook
+
+Only needed for movie watched-tracking. `scripts/install.sh` does it, or copy
+`scripts/mpv-history.lua` to `~/.config/mpv/scripts/`.
+
+## 4. Verify
 
 ```bash
-python3 -m meteordash --check | python3 -m json.tool | head -40   # no crash, panels populated
-python3 -m meteordash            # then open the URL and eyeball it
+python3 -m meteordash
 ```
 
-Confirm each enabled zone shows data. If a health advisory says SMART "needs
-root", point the user at the sudoers note in `docs/HEALTH_SIGNALS.md`. Done.
+Open the URL and confirm each enabled zone shows data. If a health advisory reports that
+SMART needs root, see the sudoers note in `HEALTH_SIGNALS.md`.

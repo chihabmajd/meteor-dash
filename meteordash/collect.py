@@ -1,8 +1,7 @@
-"""Generic hardware telemetry — auto-detects across vendors.
+"""Vendor-generic hardware telemetry from sysfs, DRM and nvidia-smi.
 
-Nothing here is specific to one laptop: CPU temp is found by scanning hwmon
-for known driver names, GPUs are discovered from DRM + nvidia-smi, fans from
-any hwmon fan*_input, the battery from any /sys/class/power_supply/BAT*.
+CPU temp comes from known hwmon driver names, fans from any fan*_input,
+the battery from any /sys/class/power_supply/BAT*.
 """
 from __future__ import annotations
 import glob
@@ -13,8 +12,7 @@ import subprocess
 _prev_cpu = [0, 0]
 
 CPU_HWMON = ("k10temp", "zenpower", "coretemp")   # AMD, AMD alt, Intel
-# label preference per driver for the package/tctl temp
-CPU_TEMP_LABEL = {"k10temp": ("Tctl", "Tccd1"), "coretemp": ("Package id 0",)}
+CPU_TEMP_LABEL = {"k10temp": ("Tctl", "Tccd1"), "coretemp": ("Package id 0",)}  # preferred label per driver
 
 
 def sh(cmd, timeout=2):
@@ -52,7 +50,6 @@ def _hwmon_temp(hw, prefer=()):
     """Return a temperature in °C from a hwmon dir, preferring labelled inputs."""
     if not hw:
         return None
-    # try preferred labels first
     for lf in sorted(glob.glob(os.path.join(hw, "temp*_label"))):
         if read(lf) in prefer:
             inp = lf.replace("_label", "_input")
@@ -62,7 +59,6 @@ def _hwmon_temp(hw, prefer=()):
     return round(_int(inp) / 1000) if os.path.exists(inp) else None
 
 
-# ------------------------------------------------------------------ CPU
 def cpu_usage():
     global _prev_cpu
     try:
@@ -101,7 +97,6 @@ def cpu(cfg_hw):
     }
 
 
-# ------------------------------------------------------------------ GPUs
 def _nvidia():
     if not shutil.which("nvidia-smi"):
         return []
@@ -132,7 +127,6 @@ def _amd():
         if not (os.path.islink(drv) and os.path.realpath(drv).endswith("amdgpu")):
             continue
         busy = _int(os.path.join(dev, "gpu_busy_percent"), -1)
-        # find the amdgpu hwmon under this device
         temp = None
         for hw in glob.glob(os.path.join(dev, "hwmon/hwmon*")):
             if read(os.path.join(hw, "name")) == "amdgpu":
@@ -147,8 +141,7 @@ def _amd():
 
 
 def _read_drm_name(dev):
-    # best-effort friendly name from the PCI id database is overkill; use marketing
-    # name if the driver exposes it, else None.
+    # skip the PCI-id database; use the driver's marketing name if it exposes one
     return read(os.path.join(dev, "product_name"))
 
 
@@ -157,7 +150,6 @@ def gpus(cfg_hw):
     return found
 
 
-# ------------------------------------------------------------------ fans
 def fans(cfg_hw):
     names = set(cfg_hw.get("extra_fans", []))
     out = []
@@ -178,7 +170,6 @@ def fans(cfg_hw):
     return out
 
 
-# ------------------------------------------------------------------ battery
 def battery(cfg_hw):
     dev = cfg_hw.get("battery")
     bats = ([f"/sys/class/power_supply/{dev}"] if dev
@@ -204,7 +195,6 @@ def battery(cfg_hw):
     return None
 
 
-# ------------------------------------------------------------------ memory / disk / net
 def memory():
     mi = {}
     for l in (read("/proc/meminfo") or "").splitlines():
@@ -245,7 +235,6 @@ def net():
                         or "tun" in sh("ip route get 1.1.1.1"))}
 
 
-# ------------------------------------------------------------------ top level
 def collect(cfg):
     hw = cfg["hardware"]
     return {

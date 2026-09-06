@@ -1,7 +1,6 @@
-"""meteor-dash HTTP server.
+"""Serves the single-page HUD on localhost, plus the JSON endpoints it polls.
 
-Serves the single-page HUD with server-injected boot data (no blank flash),
-plus JSON endpoints polled by the page. Localhost by default.
+Boot data is injected server-side so the page never flashes blank.
 """
 from __future__ import annotations
 import http.server
