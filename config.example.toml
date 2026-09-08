@@ -72,7 +72,7 @@ watch_user_units = []    # e.g. ["syncthing.service"]
 # Point it either at a pre-generated markdown report, or at raw folders.
 [vault]
 # source = "markdown"                       # "markdown" or "folders"
-# markdown_path = "~/notes/storage.md"        # if source = "markdown"
+# markdown_path = "~/notes/storage.md"      # if source = "markdown"
 # folders = [                               # if source = "folders"
 #   { path = "~/Projects",  label = "Projects", kind = "projects" },
 #   { path = "~/Documents", label = "Documents" },
