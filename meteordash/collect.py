@@ -7,9 +7,16 @@ from __future__ import annotations
 import glob
 import os
 import shutil
+import json
 import subprocess
+import time
 
 _prev_cpu = [0, 0]
+_prev_core = {}
+_prev_rate = {}
+_prev_proc = {}
+_CLK = os.sysconf("SC_CLK_TCK")
+_PAGE = os.sysconf("SC_PAGE_SIZE")
 
 CPU_HWMON = ("k10temp", "zenpower", "coretemp")   # AMD, AMD alt, Intel
 CPU_TEMP_LABEL = {"k10temp": ("Tctl", "Tccd1"), "coretemp": ("Package id 0",)}  # preferred label per driver
@@ -71,6 +78,31 @@ def cpu_usage():
         return 0
 
 
+def cpu_cores():
+    """Per-core load in %, from /proc/stat deltas (zeros on the first call)."""
+    out = []
+    for line in (read("/proc/stat") or "").splitlines()[1:]:
+        if not line.startswith("cpu"):
+            break
+        p = line.split()
+        vals = list(map(int, p[1:]))
+        idle, total = vals[3] + vals[4], sum(vals)
+        pi, pt = _prev_core.get(p[0], (idle, total))
+        _prev_core[p[0]] = (idle, total)
+        dt = total - pt
+        out.append(0 if dt <= 0 else round(100 * (1 - (idle - pi) / dt)))
+    return out
+
+
+def _rate(key, value, now):
+    """Bytes/s since the previous call for this key (None on the first call)."""
+    prev = _prev_rate.get(key)
+    _prev_rate[key] = (value, now)
+    if not prev or now <= prev[1] or value < prev[0]:
+        return None
+    return round((value - prev[0]) / (now - prev[1]))
+
+
 def cpu(cfg_hw):
     hw_name = cfg_hw.get("cpu_hwmon")
     hw = hwmon_by_name(hw_name) if hw_name else None
@@ -93,6 +125,7 @@ def cpu(cfg_hw):
         "ghz": round(max(freqs) / 1e6, 1) if freqs else None,
         "governor": read("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor") or None,
         "cores": os.cpu_count(),
+        "per_core": cpu_cores(),
         "model": model,
     }
 
@@ -189,7 +222,8 @@ def battery(cfg_hw):
             "status": read(os.path.join(b, "status")),
             "limit": read(os.path.join(b, "charge_control_end_threshold")),
             "health": round(100 * full / design) if full and design else None,
-            "cycles": read(os.path.join(b, "cycle_count")),
+            # some firmwares always report 0: treat as unknown
+            "cycles": (read(os.path.join(b, "cycle_count")) or "0").lstrip("0") or None,
             "device": os.path.basename(b),
         }
     return None
@@ -229,10 +263,100 @@ def disks(cfg_disks):
     return out
 
 
+def _is_vpn_iface(name):
+    base = f"/sys/class/net/{name}"
+    uevent = read(os.path.join(base, "uevent")) or ""
+    return ("DEVTYPE=wireguard" in uevent
+            or os.path.exists(os.path.join(base, "tun_flags"))
+            or name.startswith(("nordlynx", "wg", "tun", "proton", "mullvad")))
+
+
+def _route_dev(target="1.1.1.1"):
+    try:
+        return json.loads(sh("ip -j route get " + target) or "[]")[0].get("dev")
+    except (ValueError, IndexError, AttributeError):
+        return None
+
+
 def net():
-    return {"vpn": bool("nordlynx" in sh("ip route get 1.1.1.1")
-                        or "wg" in sh("ip route get 1.1.1.1")
-                        or "tun" in sh("ip route get 1.1.1.1"))}
+    """Throughput of physical links, plus whether a VPN is up *and* routing.
+
+    A tunnel can be up while traffic still leaves through the physical link
+    (empty policy-routing table, crashed daemon): that is reported as a leak.
+    """
+    now = time.monotonic()
+    ifaces = {}
+    for line in (read("/proc/net/dev") or "").splitlines()[2:]:
+        name, _, rest = line.partition(":")
+        name, f = name.strip(), rest.split()
+        if name == "lo" or len(f) < 9:
+            continue
+        ifaces[name] = (int(f[0]), int(f[8]))
+    phys = [n for n in ifaces if os.path.exists(f"/sys/class/net/{n}/device")]
+    vpn = next((n for n in ifaces if _is_vpn_iface(n)), None)
+    via = _route_dev()
+    out = {
+        "rx": _rate("net:rx", sum(ifaces[n][0] for n in phys), now),
+        "tx": _rate("net:tx", sum(ifaces[n][1] for n in phys), now),
+        "via": via,
+        "vpn_iface": vpn,
+        "vpn": bool(vpn and via == vpn),
+        "vpn_leak": bool(vpn and via and via != vpn),
+    }
+    if vpn:
+        out["vpn_rx"] = _rate("vpn:rx", ifaces[vpn][0], now)
+        out["vpn_tx"] = _rate("vpn:tx", ifaces[vpn][1], now)
+    return out
+
+
+def disk_io():
+    """Read/write bytes/s summed over whole physical disks."""
+    now = time.monotonic()
+    rd = wr = 0
+    for line in (read("/proc/diskstats") or "").splitlines():
+        f = line.split()
+        if len(f) < 10 or not os.path.exists(f"/sys/block/{f[2]}/device"):
+            continue
+        rd += int(f[5]) * 512
+        wr += int(f[9]) * 512
+    return {"read": _rate("disk:r", rd, now), "write": _rate("disk:w", wr, now)}
+
+
+def processes(n=6):
+    """Top programs by CPU and by memory, grouped by name (like btop's list).
+
+    CPU % is per core, as in top/btop: 200% = two cores fully busy.
+    """
+    global _prev_proc
+    now = time.monotonic()
+    prev_t = _prev_proc.get("_t")
+    cur, groups = {"_t": now}, {}
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f"/proc/{pid}/stat") as fh:
+                st = fh.read()
+        except OSError:
+            continue
+        r = st.rfind(")")
+        name, f = st[st.find("(") + 1:r], st[r + 2:].split()
+        ticks, rss = int(f[11]) + int(f[12]), int(f[21]) * _PAGE
+        if rss == 0:       # kernel threads
+            continue
+        cur[pid] = ticks
+        g = groups.setdefault(name, {"name": name, "count": 0, "cpu": 0.0, "mem": 0})
+        g["count"] += 1
+        g["mem"] += rss
+        if prev_t and pid in _prev_proc:
+            g["cpu"] += (ticks - _prev_proc[pid]) / _CLK / (now - prev_t) * 100
+    _prev_proc = cur
+    rows = list(groups.values())
+    for g in rows:
+        g["cpu"] = round(g["cpu"], 1)
+    top_cpu = sorted(rows, key=lambda g: -g["cpu"])[:n]
+    top_mem = sorted(rows, key=lambda g: -g["mem"])[:n]
+    return {"cpu": top_cpu if prev_t else [], "mem": top_mem}
 
 
 def collect(cfg):
@@ -247,4 +371,6 @@ def collect(cfg):
         "memory": memory(),
         "disks": disks(cfg["disks"]),
         "net": net(),
+        "io": disk_io(),
+        "procs": processes(),
     }

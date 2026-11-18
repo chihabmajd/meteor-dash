@@ -23,6 +23,7 @@ memory    = true
 battery   = true       # auto-hidden on desktops with no battery
 integrity = true       # the persistence / health self-check
 health    = true       # the advisory engine (disk SMART, updates, thermals…)
+activity  = true       # network/disk throughput, VPN routing, top programs
 vault     = false      # optional personal storage-intelligence module (below)
 movies    = false      # optional movie backlog + watched tracking (below)
 
@@ -59,6 +60,7 @@ thermal        = true    # thermal-throttle / hot-fan-stall detection
 battery_wear   = true
 failed_units   = true    # systemctl --failed
 pending_updates = true   # Arch: checkupdates (pacman-contrib). Others: see docs.
+vpn             = true   # crit when a VPN interface is up but traffic bypasses it
 memory_pressure = true   # swap thrash / OOM in dmesg
 load           = true    # loadavg vs core count
 # service checks: named systemd --user units that must stay active

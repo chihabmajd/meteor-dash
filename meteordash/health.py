@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 
 from .collect import sh, read, _int
 from .config import expand
@@ -179,11 +180,17 @@ def _failed_units(cfg, out):
                     "detail": f"{len(lines)} failed: {names}"})
 
 
+_UPD = {"t": -1e9, "out": ""}
+UPDATES_TTL = 1800   # checkupdates hits the mirrors: at most every 30 min
+
+
 def _updates(cfg, out):
     if not cfg["health"].get("pending_updates", True):
         return
     if shutil.which("checkupdates"):  # Arch (pacman-contrib)
-        u = sh("checkupdates", timeout=8)
+        if time.monotonic() - _UPD["t"] > UPDATES_TTL:
+            _UPD.update(t=time.monotonic(), out=sh("checkupdates", timeout=20))
+        u = _UPD["out"]
         lines = [l for l in u.splitlines() if l.strip()]
         if lines:
             kernel = any("linux" in l.split()[0] for l in lines)
@@ -226,8 +233,19 @@ def _load(cfg, data, out):
                     "detail": f"{la:.1f} on {cores} cores — heavily loaded"})
 
 
+def _vpn(cfg, data, out):
+    if not cfg["health"].get("vpn", True):
+        return
+    n = (data or {}).get("net") or {}
+    if n.get("vpn_leak"):
+        out.append({"name": "VPN bypassed", "state": "crit",
+                    "detail": f"{n['vpn_iface']} is up but traffic leaves via {n['via']}"
+                              " — reconnect the VPN"})
+
+
 def advisories(cfg, data=None):
     out = []
+    _vpn(cfg, data, out)
     _smart(cfg, out)
     _disk_usage(cfg, data, out)
     _thermal(cfg, data, out)

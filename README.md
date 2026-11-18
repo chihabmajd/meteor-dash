@@ -22,7 +22,8 @@ run `scripts/install.sh` for a guided setup with the mpv hook and a desktop laun
 
 | Zone | Contents |
 |---|---|
-| System telemetry | CPU temp/load/clock, one card per GPU, fans, memory, battery |
+| System telemetry | CPU temp/load/clock + per-core load, one card per GPU, fans, memory, battery; ~3 min history graphs |
+| Activity | Network and disk throughput, VPN routing check, top programs by CPU and by memory (btop-style) |
 | System integrity | Named services that must stay active, guard files that must exist |
 | Health advisories | SMART/NVMe wear and errors, thermal throttle, battery wear, failed units, pending updates, swap and OOM pressure, load average |
 | Storage (optional) | Tracked folder sizes and growth, from live folders or a markdown report |

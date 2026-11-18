@@ -8,7 +8,8 @@ DEFAULTS = {
     "server": {"host": "127.0.0.1", "port": 8777, "title": "meteor · command deck"},
     "panels": {
         "cpu": True, "gpu": True, "fans": True, "memory": True, "battery": True,
-        "integrity": True, "health": True, "vault": False, "movies": False,
+        "integrity": True, "health": True, "activity": True,
+        "vault": False, "movies": False,
     },
     "thresholds": {
         "cpu_temp": {"warn": 75, "crit": 88},
@@ -24,7 +25,7 @@ DEFAULTS = {
     "disks": [{"mount": "/", "label": "root"}],
     "health": {
         "smart": True, "thermal": True, "battery_wear": True, "failed_units": True,
-        "pending_updates": True, "memory_pressure": True, "load": True,
+        "pending_updates": True, "memory_pressure": True, "load": True, "vpn": True,
         "watch_user_units": [], "watch_files": {},
     },
     "vault": {},

@@ -121,13 +121,24 @@ tr:hover td{background:rgba(255,155,33,.04)}
 .mv button{flex:none;background:#0f0c08;border:1px solid var(--edgehi);color:var(--amber);
  font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:3px 8px;cursor:pointer}
 .mv button:hover{background:var(--amber);color:var(--void)}
+.spark{display:block;width:100%;height:38px;margin-top:8px;overflow:visible}
+.slbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:1px;text-transform:uppercase;margin-top:2px}
+.cores{display:flex;gap:3px;height:34px;align-items:flex-end;margin-top:12px;border-bottom:1px solid var(--edge)}
+.cores>i{display:block;flex:1;background:var(--amber);min-height:2px;transition:height .5s ease;box-shadow:0 0 4px rgba(255,155,33,.35)}
+.io{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.io .big{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1}
+.io .big small{font-size:11px;color:var(--dim);font-weight:400}
+.io .lab{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
+td.n{text-align:right;font-family:var(--mono)}
+.dot.leak{background:var(--crit);color:var(--crit);animation:pulse 1.1s infinite}
+.chip.leak{border-color:var(--crit);color:var(--crit)}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body>
 <script>window.__BOOT__=__BOOTJSON__;</script>
 <header>
  <div class=brand><b>METEOR</b>·DASH <i id=host></i></div>
  <div class=chips>
-  <div class=chip><span class=dot id=vpnd></span> <span id=vpn>NET</span></div>
+  <div class=chip id=vpnchip><span class=dot id=vpnd></span> <span id=vpn>NET</span></div>
   <div class=chip id=profchip style=display:none>PROFILE <b id=prof>—</b></div>
   <div class=chip>GOV <b id=gov>—</b></div>
   <div class=chip mono id=clock>--:--:--</div>
@@ -166,6 +177,19 @@ const panel=(title,tag,tagcls,body)=>`<div class=panel><div class=in>
 const ro=(k,v)=>`<div class=ro><span class=k>${k}</span><span class=v>${v}</span></div>`;
 const bar=(v,cy)=>`<div class="bar${cy?' cy':''}"><i style="width:${Math.min(v||0,100)}%"></i></div>`;
 const seg=v=>{let h='<div class=seg>';for(let k=0;k<10;k++)h+=`<i class="${(v/10)>k?'f':''}"></i>`;return h+'</div>';}
+// btop-style history line: values over the last ~3 min, scaled to max (or the data's peak)
+function spark(vals,max,col,col2,vals2){
+ const W=300,H=38,n=Math.max(vals.length,2);
+ const peak=max||Math.max(1,...vals.filter(v=>v!=null),...(vals2||[]).filter(v=>v!=null));
+ const pts=a=>a.map((v,i)=>`${(i/(n-1)*W).toFixed(1)},${(H-Math.min((v||0)/peak,1)*H).toFixed(1)}`).join(' ');
+ const line=(a,c)=>a.length<2?'':`<polygon points="0,${H} ${pts(a)} ${((a.length-1)/(n-1)*W).toFixed(1)},${H}" fill="${c}" opacity=.12></polygon><polyline points="${pts(a)}" fill=none stroke="${c}" stroke-width=1.6 vector-effect=non-scaling-stroke></polyline>`;
+ return `<svg class=spark viewBox="0 0 ${W} ${H}" preserveAspectRatio=none>${line(vals,col)}${vals2?line(vals2,col2):''}</svg>`;
+}
+const slbl=(l,r)=>`<div class=slbl><span>${l}</span><span>${r||''}</span></div>`;
+const rate=v=>v==null?'—':human(v)+'/s';
+let HIST=[];
+const H_=k=>HIST.map(p=>p[k]);
+const span=()=>HIST.length>1?Math.round((HIST.at(-1).t-HIST[0].t)/60)+' min':'';
 const zone=(t,s)=>`<div class=zone><i></i><h2>${t}</h2><span>${s||''}</span><hr></div>`;
 
 // ---------------- telemetry ----------------
@@ -175,11 +199,14 @@ function telemetry(d){
  if(CFG.panels.cpu){const c=d.cpu||{};
   cards+=panel('Reactor Core'+(c.model?' · '+c.model.replace(/AMD |Intel\(R\) Core\(TM\) /,'').split(' with')[0]:''),c.governor,'',
    `<div class=gauges>${gauge(c.temp,100,'°C','CPU',ctw,ctc)}${gauge(c.usage,100,'%','LOAD',clw,clc)}</div>
-    ${ro('Clock',(c.ghz??'—')+' GHz')}${ro('Cores',c.cores??'—')}`);}
- if(CFG.panels.gpu)(d.gpus||[]).forEach(g=>{const [gw,gc]=th('gpu_temp'),[glw,glc]=th('gpu_load');
+    ${(c.per_core||[]).length?`<div class=cores title="load per core">${c.per_core.map(v=>`<i style="height:${Math.max(v,3)}%;background:${clr(v,clw,clc)}"></i>`).join('')}</div>${slbl(c.per_core.length+' threads','per core')}`:''}
+    ${spark(H_('cpu'),100,'var(--amber)','var(--cyan)',H_('cpu_temp'))}${slbl('<span class=amber>load</span> · <span class=cy>temp</span>',span())}
+    ${ro('Clock',(c.ghz??'—')+' GHz')}`);}
+ if(CFG.panels.gpu)(d.gpus||[]).forEach((g,gi)=>{const [gw,gc]=th('gpu_temp'),[glw,glc]=th('gpu_load');
   const active=g.util>0;
   cards+=panel(g.name+' · '+g.vendor.toUpperCase(),active?'ACTIVE':'IDLE',active?'':'off',
    `<div class=gauges>${gauge(g.temp,100,'°C','GPU',gw,gc)}${g.util!=null?gauge(g.util,100,'%','USAGE',glw,glc):''}</div>
+    ${spark(HIST.map(p=>(p.gpus[gi]||{}).util),100,'var(--amber)','var(--cyan)',HIST.map(p=>(p.gpus[gi]||{}).temp))}${slbl('<span class=amber>usage</span> · <span class=cy>temp</span>',span())}
     ${g.watt!=null?ro('Power',g.watt+' W'):''}
     ${g.vram!=null?ro('VRAM',g.vram+' / '+g.vram_total+' MB'):''}`);});
  if(CFG.panels.fans&&(d.fans||[]).length){
@@ -187,6 +214,7 @@ function telemetry(d){
  if(CFG.panels.memory){const m=d.memory||{};
   cards+=panel('Memory · '+(m.total?Math.round(m.total)+' GB':''),m.pct!=null?m.pct+'%':'','cy',
    ro('In use',(m.used??'—')+' / '+(m.total??'—')+' GB')+bar(m.pct,1)
+   +spark(H_('mem'),100,'var(--cyan)')+slbl('memory %',span())
    +(m.swap_total?ro('Swap',(m.swap_used)+' / '+(m.swap_total)+' GB'):''));}
  if(CFG.panels.battery&&d.battery){const b=d.battery;const [bw,bc]=th('battery_health');
   cards+=panel('Battery'+(b.device?' · '+b.device:''),b.status||'','',
@@ -195,6 +223,26 @@ function telemetry(d){
    +(b.health!=null?`<div class=ro><span class=k>Health</span><span class=v style="color:${b.health<=bw?'var(--warn)':'var(--txt)'}">${b.health}%</span></div>`:'')
    +(b.cycles?ro('Cycles',b.cycles):''));}
  return zone('System Telemetry','live · 2s')+`<div class="grid g3">${cards}</div>`;
+}
+
+// ---------------- activity (network, disk, processes) ----------------
+function activity(d){
+ const n=d.net||{},io=d.io||{},pr=d.procs||{};
+ const vpnline=n.vpn_iface?ro('VPN · '+esc(n.vpn_iface),n.vpn?`<span style=color:var(--ok)>routing · ${rate(n.vpn_rx)} ↓</span>`
+   :`<span style=color:var(--crit)>BYPASSED — traffic via ${esc(n.via||'?')}</span>`):ro('VPN','<span style=color:var(--faint)>none</span>');
+ const netp=panel('Network','via '+(n.via||'—'),'cy',
+  `<div class=io><div><div class=lab>↓ download</div><div class="big cy">${rate(n.rx)}</div></div>
+   <div><div class=lab>↑ upload</div><div class="big amber">${rate(n.tx)}</div></div></div>
+   ${spark(H_('rx'),0,'var(--cyan)','var(--amber)',H_('tx'))}${slbl('<span class=cy>down</span> · <span class=amber>up</span>',span())}${vpnline}`);
+ const diskp=panel('Disk I/O','','',
+  `<div class=io><div><div class=lab>read</div><div class="big cy">${rate(io.read)}</div></div>
+   <div><div class=lab>write</div><div class="big amber">${rate(io.write)}</div></div></div>
+   ${spark(H_('rd'),0,'var(--cyan)','var(--amber)',H_('wr'))}${slbl('<span class=cy>read</span> · <span class=amber>write</span>',span())}`);
+ const tbl=(rows,k)=>`<div class=tw><table><thead><tr><th>Program</th><th style=text-align:right>CPU</th><th style=text-align:right>Mem</th></tr></thead><tbody>${
+   rows.map(r=>`<tr><td>${esc(r.name)}${r.count>1?` <span style=color:var(--faint)>×${r.count}</span>`:''}</td><td class="n${k=='cpu'?' amber':''}">${r.cpu}%</td><td class="n${k=='mem'?' amber':''}">${human(r.mem)}</td></tr>`).join('')||'<tr><td colspan=3>sampling…</td></tr>'}</tbody></table></div>`;
+ const procp=panel('Top programs · CPU','100% = 1 core','',tbl(pr.cpu||[],'cpu'));
+ const memp=panel('Top programs · Memory','','cy',tbl(pr.mem||[],'mem'));
+ return zone('Activity','live · 2s')+`<div class=grid style="grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))">${netp}${diskp}${procp}${memp}</div>`;
 }
 
 // ---------------- integrity + advisories ----------------
@@ -359,13 +407,16 @@ function rail(d){
 // ---------------- render orchestration ----------------
 function render(boot){
  CFG=boot.cfg||CFG;
- const d=boot.data||{};window._d=d;
+ const d=boot.data||{};window._d=d;HIST=boot.history||[];
  $('#host').textContent='// '+(d.host||'')+' command deck';
  $('#gov').textContent=d.cpu?.governor||'—';
  if(d.profile){$('#profchip').style.display='';$('#prof').textContent=d.profile;}
- const on=d.net?.vpn;$('#vpnd').className='dot '+(on?'on':'off');$('#vpn').textContent=on?'VPN ON':'NET';
+ const on=d.net?.vpn,leak=d.net?.vpn_leak;
+ $('#vpnd').className='dot '+(leak?'leak':on?'on':'off');$('#vpnchip').className='chip'+(leak?' leak':'');
+ $('#vpn').textContent=leak?'VPN BYPASSED':on?'VPN ON':'NET';
  rail(d);
  let html=telemetry(d);
+ if(CFG.panels.activity!==false&&(d.net||d.procs))html+=activity(d);
  if(boot.integrity)html+=checklist('System Integrity','persistence self-check',boot.integrity);
  if(boot.advisories)html+=checklist('Health Advisories','signals',boot.advisories);
  if(CFG.panels.vault)html+=vaultZone(boot.vault);
